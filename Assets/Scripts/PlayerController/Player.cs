@@ -1,4 +1,5 @@
 using UnityEngine;
+using ParkourController;
 
 namespace PlayerController
 {
@@ -7,7 +8,7 @@ namespace PlayerController
         [Header("Movement Settings")]
         [SerializeField] private float movementSpeed = 5f;
         [SerializeField] private float rotationSpeed = 720f;
-
+        
         [Header("Gravity Settings")]
         [SerializeField] private float gravity = -20f;
         [SerializeField] private float groundedGravity = -2f;
@@ -24,11 +25,14 @@ namespace PlayerController
         private float _yaw;
         private float _pitch;
         private float _verticalVelocity;
+        private ParkourDetector _parkourDetector;
+        
 
         private void Awake()
         {
             _characterController = GetComponent<CharacterController>();
             _animator = GetComponent<Animator>();
+            _parkourDetector = GetComponent<ParkourDetector>();
         }
 
         private void Start()
@@ -43,6 +47,46 @@ namespace PlayerController
         {
             CameraLook();
             PlayerMovement();
+            HandleParkourInput();
+        }
+
+        private void HandleParkourInput()
+        {
+            // Only makes sense to check for a parkour action while grounded -
+            // avoids weird double-triggers while already mid-air/mid-animation.
+            if (!_characterController.isGrounded)
+                return;
+
+            // Reusing Unity's default "Jump" button (Space) as the parkour trigger for now.
+            // Swap this for a dedicated action button once Jump itself is implemented.
+            if (!Input.GetButtonDown("Jump"))
+                return;
+
+            if (_parkourDetector == null)
+            {
+                Debug.LogWarning("Player: parkourDetector not assigned.");
+                return;
+            }
+
+            ObstacleInfo info = _parkourDetector.DetectObstacle();
+
+            if (!info.detected)
+                return; // nothing in front of us, or too tall to resolve a top
+
+            // TODO: once you have animation states, replace this with actual
+            // Animator triggers / state machine transitions per ObstacleType.
+            switch (info.type)
+            {
+                case ObstacleType.Vault:
+                    Debug.Log($"Vault! height={info.height:F2}");
+                    break;
+                case ObstacleType.Mantle:
+                    Debug.Log($"Mantle! height={info.height:F2}");
+                    break;
+                default:
+                    Debug.Log("Obstacle detected but too tall/unclassified - no action.");
+                    break;
+            }
         }
 
         private void CameraLook()
