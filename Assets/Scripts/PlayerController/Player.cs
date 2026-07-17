@@ -26,6 +26,7 @@ namespace PlayerController
         private float _pitch;
         private float _verticalVelocity;
         private ParkourDetector _parkourDetector;
+        private ParkourActionController _parkourAction;
         
 
         private void Awake()
@@ -33,6 +34,7 @@ namespace PlayerController
             _characterController = GetComponent<CharacterController>();
             _animator = GetComponent<Animator>();
             _parkourDetector = GetComponent<ParkourDetector>();
+            _parkourAction = GetComponent<ParkourActionController>();
         }
 
         private void Start()
@@ -52,9 +54,12 @@ namespace PlayerController
 
         private void HandleParkourInput()
         {
-            // Only makes sense to check for a parkour action while grounded -
-            // avoids weird double-triggers while already mid-air/mid-animation.
+            // Only makes sense to check for a parkour action while grounded and not
+            // already mid-action - avoids double-triggers and re-entrant animations.
             if (!_characterController.isGrounded)
+                return;
+
+            if (_parkourAction != null && _parkourAction.IsPerforming)
                 return;
 
             // Reusing Unity's default "Jump" button (Space) as the parkour trigger for now.
@@ -70,23 +75,16 @@ namespace PlayerController
 
             ObstacleInfo info = _parkourDetector.DetectObstacle();
 
-            if (!info.detected)
+            if (!info.detected || info.type == ObstacleType.None)
                 return; // nothing in front of us, or too tall to resolve a top
 
-            // TODO: once you have animation states, replace this with actual
-            // Animator triggers / state machine transitions per ObstacleType.
-            switch (info.type)
+            if (_parkourAction == null)
             {
-                case ObstacleType.Vault:
-                    Debug.Log($"Vault! height={info.height:F2}");
-                    break;
-                case ObstacleType.Mantle:
-                    Debug.Log($"Mantle! height={info.height:F2}");
-                    break;
-                default:
-                    Debug.Log("Obstacle detected but too tall/unclassified - no action.");
-                    break;
+                Debug.LogWarning("Player: parkourAction not assigned.");
+                return;
             }
+
+            _parkourAction.PerformAction(info);
         }
 
         private void CameraLook()
@@ -104,6 +102,11 @@ namespace PlayerController
 
         private void PlayerMovement()
         {
+            // A parkour action is fully in control of position right now (see
+            // ParkourActionController) - don't fight it with normal locomotion/gravity.
+            if (_parkourAction != null && _parkourAction.IsPerforming)
+                return;
+
             float horizontal = Input.GetAxis("Horizontal");
             float vertical = Input.GetAxis("Vertical");
 
